@@ -1,0 +1,389 @@
+---
+title: "Stat 1361 Final Project"
+author: "Theodor Clark"
+date: "4/7/2022"
+output: word_document
+---
+
+```{r, warning = FALSE, message=FALSE}
+# This chunk is reserved for loading packages
+library(lubridate)
+library(plyr)
+library(readr)
+library(GGally)
+library(dplyr)
+library(tidyverse)
+library(knitr)
+library(Metrics)
+library(ggplot2)
+library(ggthemes)
+library(caret)
+# Model packages
+library(pls)
+library(splines)
+library(glmnet)
+library(gam)
+library(MASS)
+library(leaps)
+library(regclass)
+library(mlbench)
+library(randomForest)
+```
+
+```{r}
+# Reading in the two data sets
+train <- read.csv("C:/Users/theow/OneDrive/Desktop/Spring 2022/Data Science/Final Project/train.csv")
+test <- read.csv("C:/Users/theow/OneDrive/Desktop/Spring 2022/Data Science/Final Project/test.csv")
+```
+
+```{r}
+# Data Wrangling
+# Rearranging the 'Date' variable to work alongside the lubridate package for both data sets
+train <- train %>%
+  separate(Date, into = c("Month", "Day","Year"), sep = "/")
+train <- train %>%
+  unite(Date, Year, Day, Month, sep = "-")
+
+test <- test %>%
+  separate(Date, into = c("Month", "Day","Year"), sep = "/")
+test <- test %>%
+  unite(Date, Year, Day, Month, sep = "-")
+
+# Using the lubridate package to add a "Weekend" variable to both data sets
+# Weekend=1 when the date is a weekend and Weekend=0 if it is a weekday
+dow <- wday(train$Date, week_start = 1)
+Weekend <- data.frame(matrix(0, ncol = 2, nrow = nrow(train)))
+colnames(Weekend) <- c("Day","Weekend")
+Weekend$Day <- dow
+i=1
+for (i in 1:nrow(Weekend)) {
+  if(Weekend[i,1] == 6 || Weekend[i,1] == 7) {
+Weekend[i,2] <- 1 
+    }
+  else {
+Weekend[i,2] <- 0 
+    }
+}
+train <- train %>%
+  add_column(Weekend = Weekend[,2],
+             .after = "Date")
+
+dow1 <- wday(test$Date, week_start = 1)
+
+Weekend1 <- data.frame(matrix(0, ncol = 2, nrow = nrow(test)))
+colnames(Weekend1) <- c("Day","Weekend")
+Weekend1$Day <- dow1
+i=1
+for (i in 1:nrow(Weekend1)) {
+  if(Weekend1[i,1] == 6 || Weekend1[i,1] == 7) {
+Weekend1[i,2] <- 1 
+    }
+  else {
+Weekend1[i,2] <- 0 
+    }
+}
+test <- test %>%
+  add_column(Weekend = Weekend1[,2],
+             .after = "Date")
+```
+
+```{r}
+# 2nd Cunk tidying the data
+# This chunk removes all the observations where the bikes are closed for customer rental, 
+# as these observations would skew the model results towards 0
+# Additionally, we remove Date, Functioning, and ID variables from the data
+train <- train %>% 
+  filter(Functioning=="Yes")
+train <- train[,-c(2, 15, 16)]
+```
+
+
+```{r}
+# This chunk creates a training and testing set within the 'Train' data set in order to evaluate model predictions
+set.seed(20)
+train_index <- sample(1:nrow(train), round(nrow(train) * 0.75))
+
+train.set <- train[train_index, ]
+test.set <- train[-train_index, ]
+
+# Taking a glimpse into the data's updated formatting
+head(train)
+```
+
+```{r}
+# Linear Regression
+linear_model <- lm(Count~., data=train.set)
+summary(linear_model)
+lm_pred <- predict(linear_model, test.set)
+MSE.LM <- mean((test.set$Count - lm_pred)^2)
+MSE.LM
+```
+
+```{r}
+# Forward Stepwise Regression
+forward_subset <- regsubsets(Count ~ ., data = train.set, nvmax = ncol(train.set)-1, method = "forward")
+test_mat = model.matrix(Count~., data = test.set)
+val_errors = rep(NA,19)
+
+# Iterates over each size i
+for(i in 1:12){
+    
+    # Extract the vector of predictors in the best fit model on i predictors
+    coefi = coef(forward_subset, id = i)
+    
+    # Make predictions using matrix multiplication of the test matirx and the coefficients vector
+    pred = test_mat[,names(coefi)]%*%coefi
+    
+    # Calculate the MSE
+    val_errors[i] = mean((test.set$Count-pred)^2)
+}
+
+# Find the model with the smallest error
+min = which.min(val_errors)
+
+# Plot the errors for each model size
+plot(val_errors, type = 'b')
+points(min, val_errors[min][1], col = "red", cex = 2, pch = 20)
+
+model_summary <- summary(forward_subset)
+
+# Creating a function to plot the stepwise model for MSE vs. Predictors
+plot_metric <- function(metric, yaxis_label, reverse = FALSE) {
+  plot(metric, xlab = "Number of Variables", ylab = yaxis_label, xaxt = "n", type = "l")
+  axis(side = 1, at = 1:length(metric))
+  
+  if (reverse) {
+    metric_1se <- max(metric) - (sd(metric) / sqrt(length(metric)))
+    min_subset <- which(metric > metric_1se)
+  } else {
+    metric_1se <- min(metric) + (sd(metric) / sqrt(length(metric)))
+    min_subset <- which(metric < metric_1se)
+  }
+  
+  abline(h = metric_1se, col = "red", lty = 2)
+  abline(v = min_subset[1], col = "green", lty = 2)
+}
+
+predict.regsubsets = function(object,newdata,id,...){
+      form = as.formula(object$call[[2]]) # Extract the formula used when we called regsubsets()
+      mat = model.matrix(form,newdata)    # Build the model matrix
+      coefi = coef(object,id=id)          # Extract the coefficiants of the ith model
+      xvars = names(coefi)                # Pull out the names of the predictors used in the ith model
+      mat[,xvars]%*%coefi               # Make predictions using matrix multiplication
+}
+
+par(mfrow=c(1, 3))
+  
+plot_metric(model_summary$cp, "Cp")
+plot_metric(model_summary$bic, "BIC")
+plot_metric(model_summary$adjr2, "Adjusted R2", reverse = TRUE) # higher values are better
+
+
+
+FSR_pred <- predict.regsubsets(forward_subset, newdata=test.set, id=10)
+val_errors[10]
+MSE.FSR <- mean((test.set$Count - FSR_pred)^2)
+MSE.FSR
+
+```
+
+
+```{r}
+# GAM Model
+gam_model <- gam(Count ~ s(Hour, df=2) + s(Temperature, df=2) + s(Humidity, df=2) + s(Solar, df=2) + s(Rainfall, df=2) + Seasons, data = train.set)
+
+
+calc_mse <- function(y, y_hat) {
+ return(mean((y - y_hat)^2))
+}
+
+
+gam_pred <- predict.regsubsets(gam_model, newdata=test.set, id=10)
+
+gam_mse <- calc_mse(test.set$Count, gam_pred)
+cat("MSE:", gam_mse, "\n")
+
+summary(gam_model)
+
+MSE.GAM <- gam_mse
+MSE.GAM
+```
+
+
+
+```{r}
+# Shrinkage Methods: Ridge model
+# For ridge/lasso, we must pass in an x matrix as well as a y vector for train and test sets
+xtrain <- model.matrix(Count ~ ., train.set)[,-1]
+ytrain <- train.set$Count
+xtest <- model.matrix(Count ~ ., test.set)[,-1]
+ytest <- test.set$Count
+# Ridge model cross-validation
+cv.ridge <- cv.glmnet(xtrain, ytrain, type.measure = "mse", alpha = 0, family = "gaussian")
+plot(cv.ridge)
+bestlamda <- cv.ridge$lambda.min
+#Creating training model using ridge regression
+ridge_model <- glmnet(xtrain, ytrain, alpha=0, lambda = bestlamda)
+ridge_model$beta
+ridge_pred <- predict(ridge_model, s=bestlamda , newx=xtest)
+#Calculating/printing accuracy (MSE)
+MSE.Ridge <- mean((ridge_pred-ytest)^2)
+MSE.Ridge
+
+```
+
+
+```{r}
+# Shrinkage Methods: Lasso model
+set.seed(123)
+# Lasso model cross-validation
+cv.lasso <- cv.glmnet(xtrain, ytrain, type.measure = "mse", alpha = 1, family = "gaussian")
+plot(cv.lasso)
+
+bestlam <- cv.lasso$lambda.min
+#Creating training model using lasso regression
+lasso_model <- glmnet(xtrain, ytrain, alpha=1, lambda = bestlam)
+#Printing out the logistic model
+lasso_model$beta
+#Fitting training model on test set
+lasso_pred <- predict(lasso_model, s=bestlam , newx=xtest)
+#Calculating Accuracy
+MSE.Lasso <- mean((lasso_pred-ytest)^2)
+MSE.Lasso
+
+#Retrieving the lasso coefficients
+lasscoef <- predict(lasso_model, type="coefficients", s=bestlam)[1:length(lasso_model$beta), ]
+#Printing non zero coefficients
+lasscoef[lasscoef==0]
+#dew
+```
+
+```{r}
+# Principal Components Regression (PCR)
+set.seed(2)
+pcr.fit <- pcr(Count~ ., data=train.set, scale = TRUE, validation = "CV")
+summary(pcr.fit)
+
+validationplot(pcr.fit, val.type = "MSEP")
+
+pcr.pred <- predict(pcr.fit, test.set, ncomp = 12)
+MSE.PCR <- mean((ytest - pcr.pred)^2)
+MSE.PCR
+```
+
+
+
+```{r}
+# Random Forest Model- Extension of Decision Trees
+set.seed(1)
+rf_model <- randomForest(Count ~ ., data = train.set, mtry = 4, importance = TRUE)
+rf_pred <- predict(rf_model, newdata = test.set)
+
+importance(rf_model)
+varImpPlot(rf_model)
+
+MSE.RF <- mean((test.set$Count-rf_pred)^2)
+MSE.RF
+```
+
+
+```{r}
+# Bagging Model- Extension of Decision Trees
+set.seed(1)
+bag_model <- randomForest(Count ~ ., data = train.set, mtry = 12, importance = TRUE)
+bag_pred <- predict(bag_model, newdata = test.set)
+
+importance(bag_model)
+varImpPlot(bag_model)
+
+MSE.Bag <- mean((test.set$Count- bag_pred)^2)
+MSE.Bag
+```
+
+
+
+```{r}
+# Summary Statistics & Graphics
+summary(train)
+# Splitting the data set into 12 parts (~1 subset per month), and summing the rental counts in each of the 12 subsections
+Dec <- train[1:525, ]
+December <- sum(Dec$Count)
+Jan <- train[526:1050, ]
+January <- sum(Jan$Count)
+Feb <- train[1051:1575, ]
+February <- sum(Feb$Count)
+Mar <- train[1576:2100, ]
+March <- sum(Mar$Count)
+Apr <- train[2101:2625, ]
+April <- sum(Apr$Count)
+My <- train[2626:3150, ]
+May <- sum(My$Count)
+Jun <- train[3151:3675, ]
+June <- sum(Jun$Count)
+Jul <- train[3676:4200, ]
+July <- sum(Jul$Count)
+Aug <- train[4201:4725, ]
+August <- sum(Aug$Count)
+Sep <- train[4726:5250, ]
+September <- sum(Sep$Count)
+Oct <- train[5251:5775, ]
+October <- sum(Oct$Count)
+Nov <- train[5776:6305, ]
+November <- sum(Nov$Count)
+# Summing the counts
+Bike_counts <- c(December, January, February, March, April, May, June, July, August, September, October, November)
+Months <- c("December", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November")
+# Arranging the bike counts/month (not exact month) by total count
+df <- data.frame(Months, Bike_counts)
+df %>% 
+  arrange(desc(Bike_counts))
+
+# Summary statistics for Count for Weekend=0 and Weekend=1
+week.end <- filter(train, Weekend==1)
+week.day <- filter(train, Weekend==0)
+mean(week.end$Count)
+mean(week.day$Count)
+
+# Finding most common time to rent a bike
+
+# First we create the mode function, as it is not in base R
+getmode <- function(v) {
+   uniqv <- unique(v)
+   uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+# Evaluating mode of time of day to rent a bike
+getmode(train$Hour)
+```
+
+
+```{r}
+# MSE from every generated model
+MSE.LM
+MSE.FSR
+MSE.GAM
+MSE.Ridge
+MSE.Lasso
+MSE.PCR
+MSE.RF
+MSE.Bag
+```
+
+```{r}
+# Predictions Generated from (bagging) model 
+Predictions <- predict(bag_model, test)
+# Creating an empty dataframe with 4 columns and 2208 rows
+Final_predictions <- data.frame(matrix(0, nrow=2208, ncol=4))
+colnames(Final_predictions) <- c("ID", "Count", "Student ID", "Functioning")
+Final_predictions[,1]<- test[,15]
+# Whether of not the bikes were available for rental (Functioning variable)
+# Needs to be taken into account for the predicted counts
+Final_predictions[,2] <- Predictions
+Final_predictions$Count[test$Functioning=="No"]  <- 0
+Final_predictions[,2] <- as.numeric(Final_predictions$Count)
+Final_predictions[,3] <- rep("4254877")
+Final_predictions[,4] <- test[,14]
+
+# Creating a .csv file for the final predictions
+write.csv(Final_predictions,"C:/Users/theow/OneDrive/Desktop/Spring 2022/Data Science/Final Project/testing_predictions_4254877.csv", row.names = FALSE)
+```
+
