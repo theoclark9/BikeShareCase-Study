@@ -69,6 +69,7 @@ which variables are actually more important than others. This causes a blurred l
 evaluation of variable importance, which I previously discussed. One might not trust this 
 variable importance in real-world applications, and therefore the random forest might be a better 
 choice in this light.
+
 The most challenging aspects of the bike rental dataset was the presentation of the ‘Date’ 
 variable. In order to change this variable into a binary variable named ‘Weekend’ in R, it 
 was necessary to use the lubridate package and its functions in order to transform it into a day of the 
