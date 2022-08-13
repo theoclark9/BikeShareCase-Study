@@ -70,20 +70,19 @@ evaluation of variable importance, which I previously discussed. One might not t
 variable importance in real-world applications, and therefore the random forest might be a better 
 choice in this light.
 The most challenging aspects of the bike rental dataset was the presentation of the ‘Date’ 
-variable. In order to change this variable into a binary variable named ‘Weekend’ in RStudio, it 
-was necessary to use the lubridate package and it functions in order to change it into a day of the 
+variable. In order to change this variable into a binary variable named ‘Weekend’ in R, it 
+was necessary to use the lubridate package and its functions in order to transform it into a day of the 
 week variable. Next, it was necessary to create an if else loop, within a for loop, in order to go 
 through the entire data frame and label each observation as either a weekend or weekday. This 
-was definitely a challenge but creating a variable that proved to be useful in models and 
-relatively important within my final model was worth the challenge. If my job depended on this 
+was definitely a challenge, but creating a variable that proved to be useful in models and important 
+within my final model was worth the challenge. If my job depended on this 
 model, I would be relatively confident but not overly confident. In order to improve the final 
-predictions, I would want to explore more types of decision trees, as this was clearly the right 
-approach to finding the most accurate predictions. I would likely explore boosted trees, bayesian 
-additive regression trees, along with any other types of decision tree models I may be unaware 
-of. The generalizability of this model is favorable, as it predicts with a low MSE on new data, as 
-proven in the analysis. In terms of additional predictor variables, I could not come up with any 
-that would be substantial enough to improve the model’s predictions. I do believe this model has 
-adequate predictive accuracy, but there is much room for improvement with various models and 
-possible additional predictor variables to be added. Overall, it can be safely concluded that time 
-and weather play somewhat equal parts in the demand for bike rental, with emphasis on time of 
+predictions, one could explore more types of decision trees, as this was clearly the right 
+approach to finding the most accurate predictions. Boosted trees, bayesian 
+additive regression trees, along with any other types of decision tree models could fit this scenario. 
+The generalizability of this model is favorable, as it predicts with a low MSE on new data, as 
+shown in the analysis. In terms of additional predictor variables, more weather variables could never hurt. 
+I do believe this model has adequate predictive accuracy, but there is much room for improvement with 
+various models and possible additional predictor variables to be added. Overall, it can be safely concluded 
+that time and weather play important roles in the demand for bike rental, with emphasis on time of 
 day and temperature.
